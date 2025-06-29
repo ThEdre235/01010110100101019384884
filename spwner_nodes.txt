@@ -46,33 +46,23 @@ return function(Entity)
 
 	-- Função que calcula a intensidade do shake baseada na distância
 	local function calculateShakeIntensity(distance, settings)
-		-- Se está muito longe, não faz shake
 		if distance > settings.MaxDistance then
 			return 0
 		end
-		
-		-- Se está muito perto, usa magnitude máxima
 		if distance <= settings.MinDistance then
 			return settings.MaxMagnitude
 		end
-		
-		-- Calcula a intensidade baseada na distância (linear)
 		local normalizedDistance = (distance - settings.MinDistance) / (settings.MaxDistance - settings.MinDistance)
 		local intensity = settings.MaxMagnitude - (normalizedDistance * (settings.MaxMagnitude - settings.MinMagnitude))
-		
 		return math.max(0, intensity)
 	end
 
 	-- Função que aplica shake baseado na distância
 	local function triggerDistanceShake(distance, customSettings)
 		if not camShaker then return end
-		
 		local settings = customSettings or ShakeSettings
 		if not settings.Enabled then return end
-		
 		local intensity = calculateShakeIntensity(distance, settings)
-		
-		-- Só aplica shake se a intensidade for significativa
 		if intensity > 0.1 then
 			camShaker:ShakeOnce(
 				intensity,
@@ -88,48 +78,32 @@ return function(Entity)
 		if not shakeSettings or not shakeSettings.Enabled then
 			return
 		end
-		
-		-- Inicializa o sistema de shake se necessário
 		if not camShaker then
 			initializeShakeSystem()
 		end
-		
 		if not camShaker then
 			warn("Sistema de shake não pôde ser inicializado.")
 			return
 		end
-		
 		local lastShakeTime = 0
 		local settings = shakeSettings or ShakeSettings
-		
 		local shakeConn
 		shakeConn = RunService.Heartbeat:Connect(function()
-			-- Só faz shake se a entidade estiver se movendo
 			if not EntityState.isMoving then
 				return
 			end
-			
 			local currentTime = tick()
-			
-			-- Controla a frequência do shake
 			if currentTime - lastShakeTime < settings.UpdateInterval then
 				return
 			end
-			
-			-- Calcula distância até o jogador
 			local character = player.Character
 			local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-			
 			if humanoidRootPart then
 				local distance = (movePart.Position - humanoidRootPart.Position).Magnitude
-				
-				-- Aplica shake baseado na distância
 				triggerDistanceShake(distance, settings)
 				lastShakeTime = currentTime
 			end
 		end)
-		
-		-- Limpa a conexão quando a entidade for destruída
 		entityModel.Destroying:Connect(function()
 			if shakeConn then
 				shakeConn:Disconnect()
@@ -189,7 +163,6 @@ return function(Entity)
 		local success, result = pcall(function()
 			return require(ReplicatedStorage:WaitForChild("ClientModules"):WaitForChild("Module_Events"))
 		end)
-		
 		if success and result then
 			Module_Events = result
 			return true
@@ -199,27 +172,20 @@ return function(Entity)
 		end
 	end
 
-	-- Função que quebra luzes próximas à entidade
 	local function breakNearbyLights(entityPosition, settings)
 		if not settings.LightBreaking.Enabled or not Module_Events or not Module_Events.shatter or not EntityState.canBreakLights then
 			return
 		end
-		
 		local roomsFolder = Workspace:FindFirstChild("CurrentRooms")
 		if not roomsFolder then
 			return
 		end
-		
 		local range = settings.LightBreaking.Range or 15
 		local brokenRooms = {}
-		
 		for _, room in ipairs(roomsFolder:GetChildren()) do
 			if room:IsA("Model") and not brokenRooms[room] then
-				-- Verifica se a entidade está próxima o suficiente da sala
 				local roomCenter = room:GetModelCFrame().Position
 				local distance = (entityPosition - roomCenter).Magnitude
-				
-				-- Se a distância for menor que o range, quebra as luzes da sala
 				if distance <= range then
 					pcall(function()
 						Module_Events.shatter(room)
@@ -230,34 +196,26 @@ return function(Entity)
 		end
 	end
 
-	-- Função que quebra luzes da sala atual
 	local function breakCurrentRoomLights(entityPosition, settings)
 		if not settings.LightBreaking.Enabled or not Module_Events or not Module_Events.shatter or not EntityState.canBreakLights then
 			return
 		end
-		
 		local roomsFolder = Workspace:FindFirstChild("CurrentRooms")
 		if not roomsFolder then
 			return
 		end
-		
-		-- Encontra a sala mais próxima
 		local closestRoom = nil
 		local closestDistance = math.huge
-		
 		for _, room in ipairs(roomsFolder:GetChildren()) do
 			if room:IsA("Model") then
 				local roomCenter = room:GetModelCFrame().Position
 				local distance = (entityPosition - roomCenter).Magnitude
-				
 				if distance < closestDistance then
 					closestDistance = distance
 					closestRoom = room
 				end
 			end
 		end
-		
-		-- Quebra as luzes da sala mais próxima
 		if closestRoom then
 			pcall(function()
 				Module_Events.shatter(closestRoom)
@@ -265,18 +223,15 @@ return function(Entity)
 		end
 	end
 
-	-- Flicker em todas as salas
 	local function flickerAllRooms(duration)
 		if not Module_Events or not Module_Events.flicker then
 			warn("Função flicker não encontrada no Module_Events.")
 			return
 		end
-		
 		local roomsFolder = Workspace:FindFirstChild("CurrentRooms")
 		if not roomsFolder then
 			return
 		end
-		
 		local rooms = roomsFolder:GetChildren()
 		for _, room in ipairs(rooms) do
 			if room:IsA("Model") then
@@ -287,20 +242,16 @@ return function(Entity)
 		end
 	end
 
-	-- Flicker em salas próximas
 	local function flickerNearbyRooms(entityPosition, settings)
 		if not settings.LightFlicker.Enabled or not Module_Events or not Module_Events.flicker then
 			return
 		end
-		
 		local roomsFolder = Workspace:FindFirstChild("CurrentRooms")
 		if not roomsFolder then
 			return
 		end
-		
 		local duration = settings.LightFlicker.Duration or 7
 		local flickeredRooms = {}
-		
 		for _, room in ipairs(roomsFolder:GetChildren()) do
 			if room:IsA("Model") and not flickeredRooms[room] then
 				pcall(function()
@@ -311,36 +262,27 @@ return function(Entity)
 		end
 	end
 
-	-- Flicker na sala atual
 	local function flickerCurrentRoom(entityPosition, settings)
 		if not settings.LightFlicker.Enabled or not Module_Events or not Module_Events.flicker then
 			return
 		end
-		
 		local roomsFolder = Workspace:FindFirstChild("CurrentRooms")
 		if not roomsFolder then
 			return
 		end
-		
 		local duration = settings.LightFlicker.Duration or 7
-		
-		-- Encontra a sala mais próxima
 		local closestRoom = nil
 		local closestDistance = math.huge
-		
 		for _, room in ipairs(roomsFolder:GetChildren()) do
 			if room:IsA("Model") then
 				local roomCenter = room:GetModelCFrame().Position
 				local distance = (entityPosition - roomCenter).Magnitude
-				
 				if distance < closestDistance then
 					closestDistance = distance
 					closestRoom = room
 				end
 			end
 		end
-		
-		-- Faz flicker na sala mais próxima
 		if closestRoom then
 			pcall(function()
 				Module_Events.flicker(closestRoom, duration)
@@ -353,30 +295,21 @@ return function(Entity)
 		if not settings.LightBreaking.Enabled then
 			return
 		end
-		
-		-- Inicializa o sistema de quebra de luzes
 		if not Module_Events then
 			initializeLightSystem()
 		end
-		
 		if not Module_Events then
 			warn("Sistema de quebra de luzes não pôde ser inicializado.")
 			return
 		end
-		
 		local lastPosition = movePart.Position
 		local brokenRooms = {}
-		
 		local lightConn
 		lightConn = RunService.Heartbeat:Connect(function()
-			-- Só quebra luzes se a entidade estiver se movendo
 			if not EntityState.isMoving then
 				return
 			end
-			
 			local currentPosition = movePart.Position
-			
-			-- Verifica se a entidade se moveu significativamente
 			if (currentPosition - lastPosition).Magnitude > 5 then
 				if settings.LightBreaking.OnlyCurrentRoom then
 					breakCurrentRoomLights(currentPosition, settings)
@@ -386,8 +319,6 @@ return function(Entity)
 				lastPosition = currentPosition
 			end
 		end)
-		
-		-- Limpa a conexão quando a entidade for destruída
 		entityModel.Destroying:Connect(function()
 			if lightConn then
 				lightConn:Disconnect()
@@ -395,35 +326,25 @@ return function(Entity)
 		end)
 	end
 
-	-- Sistema de monitoramento de flicker durante movimento
 	local function startLightFlicker(entityModel, movePart, settings)
 		if not settings.LightFlicker.Enabled or not settings.LightFlicker.OnMovement then
 			return
 		end
-		
-		-- Inicializa o sistema de luzes se necessário
 		if not Module_Events then
 			initializeLightSystem()
 		end
-		
 		if not Module_Events then
 			warn("Sistema de flicker não pôde ser inicializado.")
 			return
 		end
-		
 		local lastPosition = movePart.Position
 		local flickeredRooms = {}
-		
 		local flickerConn
 		flickerConn = RunService.Heartbeat:Connect(function()
-			-- Só faz flicker se a entidade estiver se movendo
 			if not EntityState.isMoving then
 				return
 			end
-			
 			local currentPosition = movePart.Position
-			
-			-- Verifica se a entidade se moveu significativamente
 			if (currentPosition - lastPosition).Magnitude > 10 then
 				if settings.LightFlicker.OnlyCurrentRoom then
 					flickerCurrentRoom(currentPosition, settings)
@@ -433,8 +354,6 @@ return function(Entity)
 				lastPosition = currentPosition
 			end
 		end)
-		
-		-- Limpa a conexão quando a entidade for destruída
 		entityModel.Destroying:Connect(function()
 			if flickerConn then
 				flickerConn:Disconnect()
@@ -444,18 +363,17 @@ return function(Entity)
 
 	--=== SISTEMA DE PATHFINDING DINÂMICO ===--
 	local PathfindingState = {
-		visitedNodes = {}, -- Nodes já visitados
-		currentRoomIndex = 1, -- Índice da sala atual
-		currentNodeIndex = 1, -- Índice do node atual na sala
-		totalRooms = 0, -- Total de salas disponíveis
-		isReversed = false -- Se está indo no sentido reverso
+		visitedNodes = {},
+		currentRoomIndex = 1,
+		currentNodeIndex = 1,
+		totalRooms = 0,
+		isReversed = false
 	}
 
 	-- Obtém nodes ordenados de uma sala, excluindo RoomStart e RoomEnd
 	local function getOrderedNodes(room)
 		local nodesFolder = room:FindFirstChild("Nodes")
 		if not nodesFolder then return {} end
-		
 		local nodes = {}
 		for _, node in ipairs(nodesFolder:GetChildren()) do
 			local num = tonumber(node.Name)
@@ -463,32 +381,24 @@ return function(Entity)
 				nodes[#nodes+1] = {num=num, part=node}
 			end
 		end
-		
 		table.sort(nodes, function(a, b) return a.num < b.num end)
-		
 		local ordered = {}
 		for _, n in ipairs(nodes) do
-			-- Filtra nodes que são RoomStart ou RoomEnd
 			if n.part.Name ~= "RoomStart" and n.part.Name ~= "RoomEnd" then
 				table.insert(ordered, n.part)
 			end
 		end
-		
 		return ordered
 	end
 
-	-- Obtém todos os nodes disponíveis de todas as salas em ordem
 	local function getAllAvailableNodes(roomNumbers, isReversed)
 		local allNodes = {}
-		local nodeMap = {} -- Mapa para rastrear nodes únicos
-		
+		local nodeMap = {}
 		if isReversed then
-			-- Processa salas em ordem reversa
 			for i = #roomNumbers, 1, -1 do
 				local room = Workspace.CurrentRooms:FindFirstChild(tostring(roomNumbers[i]))
 				if room then
 					local nodes = getOrderedNodes(room)
-					-- Adiciona nodes em ordem reversa
 					for j = #nodes, 1, -1 do
 						local node = nodes[j]
 						local nodeKey = tostring(roomNumbers[i]) .. "_" .. node.Name
@@ -505,7 +415,6 @@ return function(Entity)
 				end
 			end
 		else
-			-- Processa salas em ordem normal
 			for i = 1, #roomNumbers do
 				local room = Workspace.CurrentRooms:FindFirstChild(tostring(roomNumbers[i]))
 				if room then
@@ -526,75 +435,49 @@ return function(Entity)
 				end
 			end
 		end
-		
 		return allNodes
 	end
 
-	-- Função principal de movimento dinâmico
 	local function moveEntityDynamically(movePart, settings, isReversed)
 		local lastRoomCount = 0
 		local currentNodeIndex = 1
-		
 		while true do
-			-- Atualiza lista de salas disponíveis
 			local roomNumbers = getValidRoomNumbers()
-			
-			-- Se não há salas, para o movimento  
 			if #roomNumbers == 0 then
 				break
 			end
-			
-			-- Obtém todos os nodes disponíveis
 			local allNodes = getAllAvailableNodes(roomNumbers, isReversed)
-			
-			-- Se não há mais nodes para visitar, termina
 			if currentNodeIndex > #allNodes then
 				break
 			end
-			
-			-- Se novas salas apareceram, atualiza a lista mas não volta
 			if #roomNumbers > lastRoomCount then
 				lastRoomCount = #roomNumbers
 				allNodes = getAllAvailableNodes(roomNumbers, isReversed)
 			end
-			
-			-- Move para o próximo node
 			local nodeData = allNodes[currentNodeIndex]
 			if nodeData and nodeData.node and nodeData.node:IsA("BasePart") then
-				-- Verifica se o node ainda existe
 				if nodeData.node.Parent then
 					EntityState.isMoving = true
-					
 					local targetCF = withHeightOffset(nodeData.node.CFrame, settings.HeightOffset)
 					local duration = getTweenTime(movePart.CFrame, targetCF, settings.Speed)
 					local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
 					local tween = TweenService:Create(movePart, tweenInfo, {CFrame = targetCF})
-					
 					tween:Play()
 					tween.Completed:Wait()
-					
 					EntityState.isMoving = false
 				end
 			end
-			
 			currentNodeIndex = currentNodeIndex + 1
-			
-			-- Pequena pausa para evitar travamentos
 			task.wait(0.01)
 		end
 	end
 
 	--=== ANIMAÇÃO DE DESAPARECER PARA BAIXO ===--
 	local function animateDespawnDown(entityModel, movePart, despawnSettings, onDespawnCallback)
-		-- A entidade está se movendo durante a descida
 		EntityState.isMoving = true
-		
-		-- Executa o callback OnEntityDespawning antes da animação
 		if onDespawnCallback and type(onDespawnCallback) == "function" then
 			pcall(onDespawnCallback, entityModel)
 		end
-		
-		-- Validação e valores padrão para as configurações de descida
 		local settings = despawnSettings or {}
 		local speed = settings.Speed or 30
 		local distance = settings.Distance or 50
@@ -602,45 +485,28 @@ return function(Entity)
 		local waitAfter = settings.WaitAfter or 0.5
 		local easingStyle = settings.EasingStyle or Enum.EasingStyle.Quad
 		local easingDirection = settings.EasingDirection or Enum.EasingDirection.In
-		
-		-- Calcula a duração baseada na velocidade ou usa a duração especificada
 		local tweenDuration
 		if duration and duration > 0 then
 			tweenDuration = duration
 		else
 			tweenDuration = distance / speed
 		end
-		
-		-- Limita a duração mínima e máxima para evitar valores extremos
 		tweenDuration = math.max(0.1, math.min(tweenDuration, 10))
-		
-		-- Calcula a posição final (para baixo)
 		local downCF = movePart.CFrame * CFrame.new(0, -distance, 0)
-		
-		-- Cria e executa a animação de descida
 		local tweenInfo = TweenInfo.new(tweenDuration, easingStyle, easingDirection)
 		local tween = TweenService:Create(movePart, tweenInfo, {CFrame = downCF})
-		
-		-- Feedback visual/sonoro opcional durante a descida
 		print("Entidade " .. entityModel.Name .. " descendo " .. distance .. " studs em " .. tweenDuration .. " segundos")
-		
 		tween:Play()
 		tween.Completed:Wait()
-		
-		-- A entidade para de se mover após a descida
 		EntityState.isMoving = false
-		
-		-- Espera adicional antes de destruir
 		if waitAfter > 0 then
 			task.wait(waitAfter)
 		end
-		
 		entityModel:Destroy()
 	end
 
 	--=== FUNÇÃO PARA VERIFICAR SE O JOGADOR ESTÁ SE ESCONDENDO ===--
 	local function isPlayerHiding(player)
-		-- Procura pelo jogador na Workspace usando o nome do jogador
 		local playerInWorkspace = Workspace:FindFirstChild(player.Name)
 		if playerInWorkspace and playerInWorkspace:GetAttribute("Hiding") == true then
 			return true
@@ -652,56 +518,41 @@ return function(Entity)
 	local function startKillRange(entityModel, movePart, range, canKill, onDeathCallback)
 		if not canKill or not range or range <= 0 then return end
 		local deathDebounce = {}
-
-		-- Limpa o debounce quando o jogador respawnar
 		local function onCharacterAdded(player)
 			deathDebounce[player] = nil
 		end
 		local charConns = {}
-
 		for _, player in ipairs(Players:GetPlayers()) do
 			charConns[player] = player.CharacterAdded:Connect(function()
 				onCharacterAdded(player)
 			end)
 		end
-
 		local plrConn
 		plrConn = Players.PlayerAdded:Connect(function(player)
 			charConns[player] = player.CharacterAdded:Connect(function()
 				onCharacterAdded(player)
 			end)
 		end)
-
-		-- Função para verificar se há linha de visão entre dois pontos
 		local function hasLineOfSight(startPos, endPos, ignoreList)
 			local direction = (endPos - startPos)
 			local distance = direction.Magnitude
 			local raycastParams = RaycastParams.new()
 			raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 			raycastParams.FilterDescendantsInstances = ignoreList or {}
-			
 			local raycastResult = Workspace:Raycast(startPos, direction, raycastParams)
-			
-			-- Se não hit nada, há linha de visão
 			if not raycastResult then
 				return true
 			end
-			
-			-- Se hit algo mas a distância é maior que a distância até o alvo, há linha de visão
 			if raycastResult.Distance >= distance then
 				return true
 			end
-			
 			return false
 		end
-
 		local killConn
 		killConn = RunService.Heartbeat:Connect(function()
-			-- Só mata jogadores se a entidade estiver se movendo
 			if not EntityState.isMoving then
 				return
 			end
-			
 			for _, player in ipairs(Players:GetPlayers()) do
 				local character = player.Character
 				local humRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -709,30 +560,21 @@ return function(Entity)
 				if humRoot and hum and hum.Health > 0 then
 					local dist = (movePart.Position - humRoot.Position).Magnitude
 					if dist <= range and not deathDebounce[player] then
-						-- Se o jogador está se escondendo, não mata
 						if isPlayerHiding(player) then
-							-- Jogador está se escondendo, pula para o próximo jogador
 							continue
 						end
-						
-						-- Verifica se há linha de visão entre a entidade e o jogador
 						local ignoreList = {entityModel, character}
 						if hasLineOfSight(movePart.Position, humRoot.Position, ignoreList) then
 							deathDebounce[player] = true
-							
-							-- Executa o callback OnDeath antes de matar o jogador
 							if onDeathCallback and type(onDeathCallback) == "function" then
 								pcall(onDeathCallback, player, character, hum, entityModel)
 							end
-							
 							hum.Health = 0
 						end
 					end
 				end
 			end
 		end)
-
-		-- Limpeza de conexões ao destruir a entidade
 		entityModel.Destroying:Connect(function()
 			if killConn then killConn:Disconnect() end
 			if plrConn then plrConn:Disconnect() end
@@ -745,7 +587,7 @@ return function(Entity)
 	--=== POSIÇÃO INICIAL BASEADA EM PRIMEIRO NODE ===--
 	local function setStartPosition(movePart, roomNumbers, settings, isReversed)
 		if not isReversed then
-			-- Aparece no primeiro node da primeira sala
+			-- Aparece no primeiro node da PRIMEIRA sala
 			for i = 1, #roomNumbers do
 				local startRoom = Workspace.CurrentRooms:FindFirstChild(tostring(roomNumbers[i]))
 				if startRoom then
@@ -796,30 +638,15 @@ return function(Entity)
 			return
 		end
 
-		-- Inicializa o sistema de luzes (quebra e flicker)
 		initializeLightSystem()
-
-		-- Inicializa o sistema de shake
 		initializeShakeSystem()
-
-		-- Flicker inicial em todas as salas (se habilitado)
 		if settings.LightFlicker.Enabled and settings.LightFlicker.OnSpawn then
 			flickerAllRooms(settings.LightFlicker.Duration)
 		end
-
-		-- Inicia o sistema de kill range (se Killable for true e KillRange > 0)
 		startKillRange(EntityM, movePart, settings.KillRange, settings.Killable, settings.OnDeath)
-
-		-- Inicia o sistema de quebra de luzes
 		startLightBreaking(EntityM, movePart, settings)
-
-		-- Inicia o sistema de flicker durante movimento
 		startLightFlicker(EntityM, movePart, settings)
-
-		-- Inicia o sistema de shake screen baseado na distância
 		startShakeSystem(EntityM, movePart, settings.ShakeSettings)
-
-		-- Executa o callback OnEntitySpawn após a entidade ser criada
 		if settings.OnEntitySpawn and type(settings.OnEntitySpawn) == "function" then
 			pcall(settings.OnEntitySpawn, EntityM, movePart)
 		end
@@ -830,30 +657,22 @@ return function(Entity)
 			local minRebounds = (settings.Rebounding and settings.Rebounding.MinTimes) or 1
 			local maxRebounds = (settings.Rebounding and settings.Rebounding.MaxTimes) or minRebounds
 			local reboundDelay = settings.Rebounding and settings.Rebounding.Delay or 0
-
-			-- Define posição inicial no primeiro node válido
 			setStartPosition(movePart, roomNumbers, settings, isReversed)
-			
-			-- Durante o WaitTime, a entidade não se move e não mata
 			EntityState.isMoving = false
 			task.wait(settings.WaitTime)
-
 			if rebounding and maxRebounds > 0 then
 				local rebounds = minRebounds
 				if maxRebounds > minRebounds then
 					rebounds = math.random(minRebounds, maxRebounds)
 				end
-
 				for rep = 1, rebounds do
 					roomNumbers = getValidRoomNumbers()
 					moveEntityDynamically(movePart, settings, isReversed)
 					if reboundDelay and reboundDelay > 0 then
-						-- Durante o delay de rebote, a entidade não se move e não mata
 						EntityState.isMoving = false
 						task.wait(reboundDelay)
 					end
 					if rep == rebounds then
-						-- Último rebote - anima para baixo e sai
 						animateDespawnDown(EntityM, movePart, settings.DespawnSettings, settings.OnEntityDespawning)
 						warn(EntityM.Name .. " DESAPARECEU ANIMANDO PARA BAIXO após rebotes ("..tostring(rebounds)..")!")
 						return
@@ -861,25 +680,20 @@ return function(Entity)
 					roomNumbers = getValidRoomNumbers()
 					moveEntityDynamically(movePart, settings, not isReversed)
 					if rep < rebounds and reboundDelay and reboundDelay > 0 then
-						-- Durante o delay de rebote, a entidade não se move e não mata
 						EntityState.isMoving = false
 						task.wait(reboundDelay)
 					end
 				end
-				-- Movimento final após todos os rebotes
 				animateDespawnDown(EntityM, movePart, settings.DespawnSettings, settings.OnEntityDespawning)
 				warn(EntityM.Name .. " terminou todos os rebotes ("..tostring(rebounds)..") e sumiu ANIMANDO PARA BAIXO.")
 			else
-				-- Sem rebounding - movimento único
 				roomNumbers = getValidRoomNumbers()
 				moveEntityDynamically(movePart, settings, isReversed)
-				-- Anima para baixo após o movimento
 				animateDespawnDown(EntityM, movePart, settings.DespawnSettings, settings.OnEntityDespawning)
 				warn(EntityM.Name .. " terminou o movimento e sumiu ANIMANDO PARA BAIXO.")
 			end
 		end)()
 	end
 
-	-- Executa o spawn da entidade
 	spawnEntity(Entity)
 end
