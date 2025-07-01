@@ -44,7 +44,7 @@ function dragEntity(entityModel, pos, speed)
     end
 
     entityConnections.movementNode = RS.Stepped:Connect(function(_, step)
-        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+        if entityModel.Parent and not entityModel:GetAttribute("NoAI") and not entityModel:GetAttribute("Frozen") then
             local rootPos = entityModel.PrimaryPart.Position
             local diff = Vector3.new(pos.X, pos.Y, pos.Z) - rootPos
 
@@ -70,7 +70,7 @@ function fallEntity(entityModel, fallDistance, fallSpeed)
     end
 
     entityConnections.fallNode = RS.Stepped:Connect(function(_, step)
-        if entityModel.Parent then
+        if entityModel.Parent and not entityModel:GetAttribute("Frozen") then
             local currentPos = entityModel.PrimaryPart.Position
             local diff = targetPos - currentPos
 
@@ -85,122 +85,6 @@ function fallEntity(entityModel, fallDistance, fallSpeed)
     end)
 
     repeat task.wait() until not entityConnections.fallNode.Connected
-end
-
--- Nova função para obter todas as nodes atualizadas
-function getAllNodes(includeBackwards)
-    local entityNodes = {}
-
-    for _, room in next, workspace.CurrentRooms:GetChildren() do
-        local nodes = room:WaitForChild("Nodes", 1)
-        
-        if nodes then
-            nodes = nodes:GetChildren()
-
-            table.sort(nodes, function(a, b)
-                return a.Name < b.Name
-            end)
-
-            for _, node in next, nodes do
-                entityNodes[#entityNodes + 1] = node
-            end
-        end
-    end
-
-    if includeBackwards then
-        local inverseNodes = {}
-        for nodeIdx = #entityNodes, 1, -1 do
-            inverseNodes[#inverseNodes + 1] = entityNodes[nodeIdx]
-        end
-        entityNodes = inverseNodes
-    end
-
-    return entityNodes
-end
-
--- Nova função para movimento contínuo
-function continuousMovement(entityModel, entityTable)
-    local entityConnections = EntityConnections[entityModel]
-    local currentNodeIndex = 1
-    local isMovingBackwards = false
-    local cycleCount = 0
-    local maxCycles = math.max(math.random(entityTable.Config.Cycles.Min, entityTable.Config.Cycles.Max), 1)
-    
-    entityConnections.continuousMovement = RS.Stepped:Connect(function()
-        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
-            -- Obter nodes atualizadas
-            local allNodes = getAllNodes(entityTable.Config.BackwardsMovement)
-            
-            if #allNodes == 0 then
-                return -- Não há nodes disponíveis
-            end
-            
-            -- Verificar se a entidade não está se movendo atualmente
-            if not entityConnections.movementNode or not entityConnections.movementNode.Connected then
-                -- Determinar próximo node baseado na direção atual
-                local targetNodeIndex
-                
-                if not isMovingBackwards then
-                    -- Movendo para frente
-                    targetNodeIndex = math.min(currentNodeIndex, #allNodes)
-                    
-                    if currentNodeIndex > #allNodes then
-                        -- Chegou ao final, começar a voltar se permitido
-                        if entityTable.Config.Cycles.Max > 1 then
-                            isMovingBackwards = true
-                            targetNodeIndex = #allNodes
-                            currentNodeIndex = #allNodes
-                        else
-                            -- Finalizar movimento
-                            entityConnections.continuousMovement:Disconnect()
-                            return
-                        end
-                    end
-                else
-                    -- Movendo para trás
-                    targetNodeIndex = math.max(currentNodeIndex, 1)
-                    
-                    if currentNodeIndex < 1 then
-                        -- Completou um ciclo
-                        cycleCount = cycleCount + 1
-                        
-                        if cycleCount >= maxCycles then
-                            -- Finalizar movimento
-                            entityConnections.continuousMovement:Disconnect()
-                            return
-                        else
-                            -- Começar novo ciclo
-                            isMovingBackwards = false
-                            currentNodeIndex = 1
-                            targetNodeIndex = 1
-                            
-                            -- Aguardar entre ciclos se necessário
-                            if entityTable.Config.Cycles.WaitTime > 0 then
-                                task.wait(entityTable.Config.Cycles.WaitTime)
-                            end
-                        end
-                    end
-                end
-                
-                -- Mover para o próximo node se existir
-                if allNodes[targetNodeIndex] then
-                    local targetPos = allNodes[targetNodeIndex].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0)
-                    
-                    -- Iniciar movimento para o próximo node
-                    task.spawn(function()
-                        dragEntity(entityModel, targetPos, entityTable.Config.Speed)
-                        
-                        -- Atualizar índice após movimento
-                        if not isMovingBackwards then
-                            currentNodeIndex = currentNodeIndex + 1
-                        else
-                            currentNodeIndex = currentNodeIndex - 1
-                        end
-                    end)
-                end
-            end
-        end
-    end)
 end
 
 function loadSound(soundData)
@@ -225,6 +109,71 @@ function loadSound(soundData)
     sound.Parent = workspace
 
     return sound
+end
+
+-- Nova função para criar efeito de chuvisco
+function createStaticEffect()
+    local StaticGui = Instance.new("ScreenGui")
+    local StaticFrame = Instance.new("Frame")
+    local StaticImage = Instance.new("ImageLabel")
+
+    StaticGui.Name = "StaticGui"
+    StaticGui.IgnoreGuiInset = true
+    StaticGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    StaticGui.Parent = CG
+
+    StaticFrame.Name = "StaticFrame"
+    StaticFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    StaticFrame.BackgroundTransparency = 0.3
+    StaticFrame.BorderSizePixel = 0
+    StaticFrame.Size = UDim2.new(1, 0, 1, 0)
+    StaticFrame.ZIndex = 1000
+    StaticFrame.Parent = StaticGui
+
+    StaticImage.Name = "StaticImage"
+    StaticImage.BackgroundTransparency = 1
+    StaticImage.Size = UDim2.new(1, 0, 1, 0)
+    StaticImage.Image = "rbxassetid://8560915132" -- ID de uma imagem de chuvisco/estática
+    StaticImage.ImageTransparency = 0.5
+    StaticImage.ZIndex = 1001
+    StaticImage.Parent = StaticFrame
+
+    -- Animação de chuvisco
+    task.spawn(function()
+        while StaticGui.Parent do
+            StaticImage.ImageTransparency = math.random(30, 70) / 100
+            StaticFrame.BackgroundTransparency = math.random(20, 80) / 100
+            task.wait(math.random(50, 150) / 1000)
+        end
+    end)
+
+    return StaticGui
+end
+
+-- Nova função para mover câmera para entidade
+function moveCameraToEntity(entityModel)
+    local originalCameraType = Camera.CameraType
+    local originalCFrame = Camera.CFrame
+    
+    Camera.CameraType = Enum.CameraType.Scriptable
+    
+    local targetCFrame = CFrame.new(
+        entityModel.PrimaryPart.Position + Vector3.new(0, 2, 5),
+        entityModel.PrimaryPart.Position
+    )
+    
+    local cameraTween = TS:Create(
+        Camera,
+        TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {CFrame = targetCFrame}
+    )
+    
+    cameraTween:Play()
+    
+    return function() -- Função para restaurar câmera
+        Camera.CameraType = originalCameraType
+        Camera.CFrame = originalCFrame
+    end
 end
 
 -- Functions
@@ -254,6 +203,7 @@ Spawner.createEntity = function(config)
 
             entityModel:SetAttribute("IsCustomEntity", true)
             entityModel:SetAttribute("NoAI", false)
+            entityModel:SetAttribute("Frozen", false)
 
             -- EntityTable
 
@@ -277,26 +227,41 @@ Spawner.createEntity = function(config)
 end
 
 Spawner.runEntity = function(entityTable)
-    -- Spawn inicial
-    local entityModel = entityTable.Model:Clone()
-    local initialNodes = getAllNodes(entityTable.Config.BackwardsMovement)
-    
-    if #initialNodes == 0 then
-        warn("Nenhuma node encontrada para spawnar a entidade")
-        return
+    -- Nodes
+
+    local entityNodes = {}
+
+    for _, room in next, workspace.CurrentRooms:GetChildren() do
+        local nodes = room:WaitForChild("Nodes", 1)
+        
+        if nodes then
+            nodes = nodes:GetChildren()
+
+            table.sort(nodes, function(a, b)
+                return a.Name < b.Name
+            end)
+
+            for _, node in next, nodes do
+                entityNodes[#entityNodes + 1] = node
+            end
+        end
     end
-    
-    local startNodeIndex = entityTable.Config.BackwardsMovement and #initialNodes or 1
+
+    -- Spawn
+
+    local entityModel = entityTable.Model:Clone()
+    local startNodeIndex = entityTable.Config.BackwardsMovement and #entityNodes or 1
     local startNodeOffset = entityTable.Config.BackwardsMovement and -50 or 50
 
     EntityConnections[entityModel] = {}
     local entityConnections = EntityConnections[entityModel]
     
-    entityModel:SetPrimaryPartCFrame(initialNodes[startNodeIndex].CFrame * CFrame.new(0, 0, startNodeOffset) + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0))
+    entityModel:SetPrimaryPartCFrame(entityNodes[startNodeIndex].CFrame * CFrame.new(0, 0, startNodeOffset) + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0))
     entityModel.Parent = workspace
     task.spawn(entityTable.Debug.OnEntitySpawned)
 
     -- Mute entity on spawn
+
     if CG:FindFirstChild("JumpscareGui") or (Plr.PlayerGui.MainUI.Death.HelpfulDialogue.Visible and not Plr.PlayerGui.MainUI.DeathPanelDead.Visible) then
         warn("on death screen, mute entity")
 
@@ -308,21 +273,26 @@ Spawner.runEntity = function(entityTable)
     end
 
     -- Flickering
+
     if entityTable.Config.FlickerLights[1] then
         ModuleScripts.ModuleEvents.flickerLights(workspace.CurrentRooms[ReSt.GameData.LatestRoom.Value], entityTable.Config.FlickerLights[2])
     end
 
-    -- Sistema de detecção e interação com o jogador
+    -- Movement
+
+    task.wait(entityTable.Config.DelayTime)
+
     local enteredRooms = {}
 
-    entityConnections.playerDetection = RS.Stepped:Connect(function()
-        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+    entityConnections.movementTick = RS.Stepped:Connect(function()
+        if entityModel.Parent and not entityModel:GetAttribute("NoAI") and not entityModel:GetAttribute("Frozen") then
             local entityPos = entityModel.PrimaryPart.Position
             local rootPos = getPlayerRoot().Position
             local floorRay = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, Vector3.new(0, -10, 0)), {entityModel, Char})
             local playerInSight = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, rootPos - entityPos), {entityModel, Char}) == nil
             
             -- Entered room
+
             if floorRay ~= nil and floorRay.Name == "Floor" then
                 for _, room in next, workspace.CurrentRooms:GetChildren() do
                     if floorRay:IsDescendantOf(room) and not table.find(enteredRooms, room) then
@@ -330,6 +300,7 @@ Spawner.runEntity = function(entityTable)
                         task.spawn(entityTable.Debug.OnEntityEnteredRoom, room)
 
                         -- Break lights
+                        
                         if entityTable.Config.BreakLights then
                             ModuleScripts.ModuleEvents.breakLights(room)
                         end
@@ -340,6 +311,7 @@ Spawner.runEntity = function(entityTable)
             end
 
             -- Camera shaking
+            
             local shakeConfig = entityTable.Config.CamShake
             local shakeMag = (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude
 
@@ -355,91 +327,149 @@ Spawner.runEntity = function(entityTable)
             end
 
             -- Player in sight
+
             if playerInSight then
                 -- Look at entity
+
                 local _, onScreen = WorldToViewportPoint(Camera, entityModel.PrimaryPart.Position)
 
                 if onScreen then
                     task.spawn(entityTable.Debug.OnLookAtEntity)
                 end
 
-                -- Kill player
+                -- Kill player (SEQUÊNCIA MODIFICADA)
+
                 if entityTable.Config.CanKill and not Char:GetAttribute("IsDead") and not Char:GetAttribute("Invincible") and not Char:GetAttribute("Hiding") and (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude <= entityTable.Config.KillRange then
                     task.spawn(function()
                         Char:SetAttribute("IsDead", true)
 
-                        -- Mute entity
-                        warn("mute entity")
+                        -- 1. CONGELAR ENTIDADE E PARAR TODOS OS SONS/PARTÍCULAS
+                        entityModel:SetAttribute("Frozen", true)
+                        entityModel:SetAttribute("NoAI", true)
 
+                        -- Parar todos os sons
                         for _, v in next, entityModel:GetDescendants() do
                             if v.ClassName == "Sound" and v.Playing then
                                 v:Stop()
                             end
                         end
 
-                        -- Jumpscare
-                        if entityTable.Config.Jumpscare[1] then
-                            Spawner.runJumpscare(entityTable.Config.Jumpscare[2])
+                        -- Parar todas as partículas
+                        for _, v in next, entityModel:GetDescendants() do
+                            if v:IsA("ParticleEmitter") then
+                                v.Enabled = false
+                            end
                         end
 
-                        -- Death handling
-                        task.spawn(entityTable.Debug.OnDeath)
-                        Hum.Health = 0
+                        -- 2. MOVER CÂMERA PARA ENTIDADE
+                        local restoreCamera = moveCameraToEntity(entityModel)
+
+                        -- 3. AGUARDAR 2 SEGUNDOS E TOCAR SOM
+                        task.wait(2)
+                        
+                        -- Som após 2 segundos
+                        local killSound = Instance.new("Sound")
+                        killSound.SoundId = "rbxassetid://131961136" -- Som de morte/susto
+                        killSound.Volume = 0.7
+                        killSound.Parent = workspace
+                        killSound:Play()
+
+                        -- 4. MUDAR IMAGEM DA ENTIDADE
+                        for _, v in next, entityModel:GetDescendants() do
+                            if v:IsA("ImageLabel") or v:IsA("Decal") then
+                                v.Image = "rbxassetid://8560915132" -- Nova imagem assustadora
+                            end
+                        end
+
+                        -- 5. CRIAR EFEITO DE CHUVISCO
+                        local staticGui = createStaticEffect()
+                        
+                        -- Som do chuvisco
+                        local staticSound = Instance.new("Sound")
+                        staticSound.SoundId = "rbxassetid://131961136" -- Som de estática
+                        staticSound.Volume = 0.5
+                        staticSound.Looped = true
+                        staticSound.Parent = workspace
+                        staticSound:Play()
+
+                        -- 6. AGUARDAR 1.7 SEGUNDOS E CAUSAR DANO
+                        task.wait(1.7)
+                        
+                        -- Causar 100 de dano
+                        Hum:TakeDamage(100)
+                        
+                        -- Limpar efeitos após o dano
+                        task.wait(0.5)
+                        staticGui:Destroy()
+                        staticSound:Destroy()
+                        killSound:Destroy()
+                        restoreCamera()
+
+                        -- Death handling original
                         ReSt.GameStats["Player_".. Plr.Name].Total.DeathCause.Value = entityModel.Name
                         
                         if #entityTable.Config.CustomDialog > 0 then
                             firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
                         end
                         
-                        -- Unmute entity
-                        task.spawn(function()
-                            repeat task.wait() until Plr.PlayerGui.MainUI.DeathPanelDead.Visible
-
-                            warn("unmute entity:", entityModel)
-
-                            for _, v in next, entityModel:GetDescendants() do
-                                if v.ClassName == "Sound" then
-                                    local oldVolume = v.Volume
-                                
-                                    v.Volume = 0
-                                    v:Play()
-                                    TS:Create(v, TweenInfo.new(2), {Volume = oldVolume}):Play()
-                                end
-                            end
-                        end)
+                        task.spawn(entityTable.Debug.OnDeath)
                     end)
                 end
             end
         end
     end)
 
-    -- Aguardar delay inicial
-    task.wait(entityTable.Config.DelayTime)
     task.spawn(entityTable.Debug.OnEntityStartMoving)
 
-    -- Iniciar movimento contínuo
-    continuousMovement(entityModel, entityTable)
-    
-    -- Aguardar até que o movimento termine
-    repeat task.wait() until not entityConnections.continuousMovement or not entityConnections.continuousMovement.Connected
-    
-    -- Callback de rebound finalizado
-    task.spawn(entityTable.Debug.OnEntityFinishedRebound)
+    -- Cycles
+
+    local cyclesConfig = entityTable.Config.Cycles
+
+    if entityTable.Config.BackwardsMovement then
+        local inverseNodes = {}
+
+        for nodeIdx = #entityNodes, 1, -1 do
+            inverseNodes[#inverseNodes + 1] = entityNodes[nodeIdx]
+        end
+
+        entityNodes = inverseNodes
+    end
+
+    for cycle = 1, math.max(math.random(cyclesConfig.Min, cyclesConfig.Max), 1) do
+        for nodeIdx = 1, #entityNodes, 1 do
+            dragEntity(entityModel, entityNodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+        end
+
+        if cyclesConfig.Max > 1 then
+            for nodeIdx = #entityNodes, 1, -1 do
+                dragEntity(entityModel, entityNodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+            end
+        end
+
+        -- Rebound finished
+
+        task.spawn(entityTable.Debug.OnEntityFinishedRebound)
+        
+        if cycle < cyclesConfig.Max then
+            task.wait(cyclesConfig.WaitTime)
+        end
+    end
 
     -- Fall and Destroy
+
     if not entityModel:GetAttribute("NoAI") then
-        -- Desconectar detecção do jogador
-        if entityConnections.playerDetection then
-            entityConnections.playerDetection:Disconnect()
+        -- Desconectar movimento regular primeiro
+        if entityConnections.movementTick then
+            entityConnections.movementTick:Disconnect()
         end
         
         -- Iniciar movimento de queda
-        fallEntity(entityModel, 20, 50)
+        fallEntity(entityModel, 20, 50) -- 20 studs de queda com velocidade 50
         
         -- Aguardar até que o movimento de queda termine
         repeat task.wait() until not EntityConnections[entityModel].fallNode or not EntityConnections[entityModel].fallNode.Connected
         
-        -- Destruir a entidade
+        -- Agora destruir a entidade
         for _, v in next, entityConnections do
             if v and v.Connected then
                 v:Disconnect()
