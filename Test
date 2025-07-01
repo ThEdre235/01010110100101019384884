@@ -87,6 +87,32 @@ function fallEntity(entityModel, fallDistance, fallSpeed)
     repeat task.wait() until not entityConnections.fallNode.Connected
 end
 
+-- Nova função para obter a segunda sala mais recente
+function getSecondLatestRoom()
+    local rooms = {}
+    
+    -- Coletando todas as salas e seus números
+    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+        local roomNumber = tonumber(room.Name)
+        if roomNumber then
+            table.insert(rooms, {room = room, number = roomNumber})
+        end
+    end
+    
+    -- Ordenando as salas por número (maior para menor)
+    table.sort(rooms, function(a, b)
+        return a.number > b.number
+    end)
+    
+    -- Retornando a segunda sala mais recente (índice 2)
+    if #rooms >= 2 then
+        return rooms[2].room
+    else
+        -- Se não houver segunda sala, retorna a primeira (fallback)
+        return rooms[1] and rooms[1].room or nil
+    end
+end
+
 function loadSound(soundData)
     local sound = Instance.new("Sound")
     local soundId = tostring(soundData[1])
@@ -218,12 +244,23 @@ Spawner.runEntity = function(entityTable)
 
     local enteredRooms = {}
 
+    -- MODIFICAÇÃO PRINCIPAL: Monitoramento da segunda sala mais recente
+    local secondLatestRoom = getSecondLatestRoom()
+    local shouldDespawn = false
+
     entityConnections.movementTick = RS.Stepped:Connect(function()
         if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
             local entityPos = entityModel.PrimaryPart.Position
             local rootPos = getPlayerRoot().Position
             local floorRay = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, Vector3.new(0, -10, 0)), {entityModel, Char})
             local playerInSight = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, rootPos - entityPos), {entityModel, Char}) == nil
+            
+            -- Verificar se a entidade está na segunda sala mais recente
+            if floorRay and floorRay.Name == "Floor" and secondLatestRoom then
+                if floorRay:IsDescendantOf(secondLatestRoom) then
+                    shouldDespawn = true
+                end
+            end
             
             -- Entered room
 
@@ -342,29 +379,43 @@ Spawner.runEntity = function(entityTable)
         entityNodes = inverseNodes
     end
 
-    -- MODIFICAÇÃO PRINCIPAL: Calcular penúltima sala
-    local totalNodes = #entityNodes
-    local penultimateNodeIndex = math.max(totalNodes - 1, 1) -- Penúltimo nó, mínimo 1
-
     for cycle = 1, math.max(math.random(cyclesConfig.Min, cyclesConfig.Max), 1) do
-        for nodeIdx = 1, totalNodes, 1 do
-            -- Verificar se chegou na penúltima sala
-            if nodeIdx >= penultimateNodeIndex then
-                -- Mover para a penúltima posição
-                dragEntity(entityModel, entityNodes[penultimateNodeIndex].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
-                
-                -- Parar o loop e iniciar processo de desaparecimento
+        for nodeIdx = 1, #entityNodes, 1 do
+            -- Verificar se deve desaparecer durante o movimento
+            if shouldDespawn then
                 break
-            else
+            end
+            dragEntity(entityModel, entityNodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+        end
+
+        if shouldDespawn then
+            break
+        end
+
+        if cyclesConfig.Max > 1 then
+            for nodeIdx = #entityNodes, 1, -1 do
+                -- Verificar se deve desaparecer durante o movimento reverso
+                if shouldDespawn then
+                    break
+                end
                 dragEntity(entityModel, entityNodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
             end
         end
 
-        -- Se chegou na penúltima sala, sair do loop de ciclos
-        break
+        if shouldDespawn then
+            break
+        end
+
+        -- Rebound finished
+
+        task.spawn(entityTable.Debug.OnEntityFinishedRebound)
+        
+        if cycle < cyclesConfig.Max then
+            task.wait(cyclesConfig.WaitTime)
+        end
     end
 
-    -- Fall and Destroy na penúltima sala (MODIFICAÇÃO PRINCIPAL)
+    -- Fall and Destroy (MODIFICAÇÃO PRINCIPAL - Desaparecer na segunda sala mais recente)
 
     if not entityModel:GetAttribute("NoAI") then
         -- Desconectar movimento regular primeiro
@@ -372,7 +423,12 @@ Spawner.runEntity = function(entityTable)
             entityConnections.movementTick:Disconnect()
         end
         
-        -- Iniciar movimento de queda na penúltima sala
+        -- Se a entidade deve desaparecer na segunda sala mais recente
+        if shouldDespawn then
+            warn("Entidade desaparecendo na segunda sala mais recente!")
+        end
+        
+        -- Iniciar movimento de queda
         fallEntity(entityModel, 20, 50) -- 20 studs de queda com velocidade 50
         
         -- Aguardar até que o movimento de queda termine
