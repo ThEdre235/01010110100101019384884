@@ -145,6 +145,7 @@ local function ripperDeath(entityModel, entityTable)
     local r = game:GetObjects("rbxassetid://76305076231751")[1] 
     r.Parent = workspace
 
+    local cameraConnection
     spawn(function()
         local Camera = workspace.CurrentCamera
         Camera.CameraType = Enum.CameraType.Scriptable
@@ -153,7 +154,7 @@ local function ripperDeath(entityModel, entityTable)
         local scene = TS:Create(Camera, TweenInfo.new(0.5), {CFrame = CFrame.new(cameraPosition, modelPosition)})
         scene:Play()
         scene.Completed:Wait()
-        game:GetService("RunService").RenderStepped:Connect(function()
+        cameraConnection = game:GetService("RunService").RenderStepped:Connect(function()
             local Camera = workspace.CurrentCamera
             local cameraPosition = Camera.CFrame.Position
             local modelPosition = r:GetPivot().Position
@@ -226,6 +227,12 @@ local function ripperDeath(entityModel, entityTable)
     wait(2)
     -- MATA O PLAYER AQUI
     Hum:TakeDamage(100)
+    
+    -- RESTAURA A CÂMERA AO NORMAL
+    if cameraConnection then
+        cameraConnection:Disconnect()
+    end
+    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
     
     r:Destroy()
     crash:Stop()
