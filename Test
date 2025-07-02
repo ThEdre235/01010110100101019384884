@@ -142,7 +142,7 @@ end
 -- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
 local function ripperDeath(entityModel, entityTable)
     --Model Jumpscare
-    local r = game:GetObjects("rbxassetid://76305076231751")[1] 
+    local r = game:GetObjects("rbxassetid://79225524775496")[1] 
     r.Parent = workspace
 
     local cameraConnection
