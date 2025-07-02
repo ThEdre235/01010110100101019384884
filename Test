@@ -59,6 +59,34 @@ function dragEntity(entityModel, pos, speed)
     repeat task.wait() until not entityConnections.movementNode.Connected
 end
 
+-- Nova função para movimento de queda
+function fallEntity(entityModel, fallDistance, fallSpeed)
+    local entityConnections = EntityConnections[entityModel]
+    local startPos = entityModel.PrimaryPart.Position
+    local targetPos = startPos - Vector3.new(0, fallDistance or 20, 0)
+
+    if entityConnections.fallNode then
+        entityConnections.fallNode:Disconnect()
+    end
+
+    entityConnections.fallNode = RS.Stepped:Connect(function(_, step)
+        if entityModel.Parent then
+            local currentPos = entityModel.PrimaryPart.Position
+            local diff = targetPos - currentPos
+
+            if diff.Y < -0.1 then -- Ainda está caindo
+                local moveStep = Vector3.new(0, -math.min(step * (fallSpeed or 50), math.abs(diff.Y)), 0)
+                entityModel:SetPrimaryPartCFrame(CFrame.new(currentPos + moveStep))
+            else
+                -- Movimento de queda terminou
+                entityConnections.fallNode:Disconnect()
+            end
+        end
+    end)
+
+    repeat task.wait() until not entityConnections.fallNode.Connected
+end
+
 function loadSound(soundData)
     local sound = Instance.new("Sound")
     local soundId = tostring(soundData[1])
@@ -81,6 +109,107 @@ function loadSound(soundData)
     sound.Parent = workspace
 
     return sound
+end
+
+-- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
+local function ripperDeath(entityModel, entityTable)
+    --Model Jumpscare
+    local r = game:GetObjects("rbxassetid://76305076231751")[1] 
+    r.Parent = workspace
+
+    spawn(function()
+        local Camera = workspace.CurrentCamera
+        Camera.CameraType = Enum.CameraType.Scriptable
+        local cameraPosition = Camera.CFrame.Position
+        local modelPosition = r:GetPivot().Position
+        local scene = TS:Create(Camera, TweenInfo.new(0.5), {CFrame = CFrame.new(cameraPosition, modelPosition)})
+        scene:Play()
+        scene.Completed:Wait()
+        game:GetService("RunService").RenderStepped:Connect(function()
+            local Camera = workspace.CurrentCamera
+            local cameraPosition = Camera.CFrame.Position
+            local modelPosition = r:GetPivot().Position
+            Camera.CFrame = CFrame.new(cameraPosition, modelPosition)
+        end)
+    end)
+
+    --Freeze movement
+    spawn(function()
+        while wait() do
+            Plr.Character.Humanoid.WalkSpeed = 0
+        end
+    end)
+
+    --Jumpscare
+    local bruh = workspace:FindFirstChild("Death")
+    if bruh and bruh.PrimaryPart then
+        r:SetPrimaryPartCFrame(bruh.PrimaryPart.CFrame * CFrame.new(0, 1, 0))
+    end
+    
+    for i,v in pairs(r:GetDescendants()) do
+        if v:IsA("ParticleEmitter") then
+            v.Rate = 9999999
+            task.wait(0.1)
+            v.TimeScale = 0
+        end
+    end
+
+    wait(0.1)
+    local function GetGitSound(GithubSnd, SoundName)
+        local url = GithubSnd
+        if not isfile(SoundName .. ".mp3") then
+            writefile(SoundName .. ".mp3", game:HttpGet(url))
+        end
+        local sound = Instance.new("Sound")
+        sound.SoundId = (getcustomasset or getsynasset)(SoundName .. ".mp3")
+        return sound
+    end
+    
+    local crash = GetGitSound("https://github.com/Brololto/Angler-sounds/blob/main/lv_0_20241221185918%20(1).mp3?raw=true", "Crashund")
+    crash.Volume = 4
+    crash.Parent = workspace
+    crash:Play()
+    wait(1)
+    
+    local playerGui = Plr:WaitForChild("PlayerGui")
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RipperDeathGui"
+    screenGui.Parent = playerGui
+    screenGui.IgnoreGuiInset = true
+
+    local red = Instance.new("ImageLabel")
+    red.Size = UDim2.new(1, 0, 1, 0)
+    red.BackgroundTransparency = 1
+    red.Image = "rbxassetid://76637426417491"
+    red.ImageTransparency = 1
+    red.Parent = screenGui
+
+    task.spawn(function()
+        while task.wait(0.1) do
+            if not screenGui.Parent then break end
+            red.Image = "rbxassetid://94547864377343"
+            wait()
+            red.Image = "rbxassetid://76637426417491"
+        end
+    end)
+    TS:Create(red, TweenInfo.new(0.5), {ImageTransparency = 0}):Play()
+
+    wait(2)
+    -- MATA O PLAYER AQUI
+    Hum:TakeDamage(100)
+    
+    r:Destroy()
+    crash:Stop()
+    local GetTimeSpeed = TweenInfo.new(0.5)
+    TS:Create(red, GetTimeSpeed, {ImageTransparency = 1}):Play()
+    
+    -- Define causa da morte
+    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Ripper"
+    
+    -- Limpa GUI após fade out
+    wait(0.5)
+    screenGui:Destroy()
 end
 
 -- Functions
@@ -243,7 +372,7 @@ Spawner.runEntity = function(entityTable)
                     task.spawn(entityTable.Debug.OnLookAtEntity)
                 end
 
-                -- Kill player
+                -- Kill player - SUBSTITUÍDO POR SISTEMA DO RIPPER
 
                 if entityTable.Config.CanKill and not Char:GetAttribute("IsDead") and not Char:GetAttribute("Invincible") and not Char:GetAttribute("Hiding") and (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude <= entityTable.Config.KillRange then
                     task.spawn(function()
@@ -259,17 +388,11 @@ Spawner.runEntity = function(entityTable)
                             end
                         end
 
-                        -- Jumpscare
+                        -- CHAMA A FUNÇÃO DE MORTE ADAPTADA DO RIPPER
+                        ripperDeath(entityModel, entityTable)
                         
-                        if entityTable.Config.Jumpscare[1] then
-                            Spawner.runJumpscare(entityTable.Config.Jumpscare[2])
-                        end
-
                         -- Death handling
-                        
                         task.spawn(entityTable.Debug.OnDeath)
-                        Hum.Health = 99
-                        ReSt.GameStats["Player_".. Plr.Name].Total.DeathCause.Value = entityModel.Name
                         
                         if #entityTable.Config.CustomDialog > 0 then
                             firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
@@ -334,11 +457,25 @@ Spawner.runEntity = function(entityTable)
         end
     end
 
-    -- Destroy
+    -- Fall and Destroy
 
     if not entityModel:GetAttribute("NoAI") then
+        -- Desconectar movimento regular primeiro
+        if entityConnections.movementTick then
+            entityConnections.movementTick:Disconnect()
+        end
+        
+        -- Iniciar movimento de queda
+        fallEntity(entityModel, 20, 50) -- 20 studs de queda com velocidade 50
+        
+        -- Aguardar até que o movimento de queda termine
+        repeat task.wait() until not EntityConnections[entityModel].fallNode or not EntityConnections[entityModel].fallNode.Connected
+        
+        -- Agora destruir a entidade
         for _, v in next, entityConnections do
-            v:Disconnect()
+            if v and v.Connected then
+                v:Disconnect()
+            end
         end
         
         entityModel:Destroy()
