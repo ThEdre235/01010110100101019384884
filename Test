@@ -113,6 +113,22 @@ end
 
 -- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
 local function ripperDeath(entityModel, entityTable)
+    -- DESTRUIR O MODELO QUE ESTAVA SE MOVIMENTANDO ANTES DO JUMPSCARE
+    if entityModel and entityModel.Parent then
+        -- Desconectar todas as conexões da entidade
+        local entityConnections = EntityConnections[entityModel]
+        if entityConnections then
+            for _, connection in pairs(entityConnections) do
+                if connection and connection.Connected then
+                    connection:Disconnect()
+                end
+            end
+        end
+        
+        -- Destruir o modelo que estava se movimentando
+        entityModel:Destroy()
+    end
+    
     --Model Jumpscare
     local r = game:GetObjects("rbxassetid://76305076231751")[1] 
     r.Parent = workspace
@@ -205,7 +221,7 @@ local function ripperDeath(entityModel, entityTable)
     TS:Create(red, GetTimeSpeed, {ImageTransparency = 1}):Play()
     
     -- Define causa da morte
-    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Ripper"
+    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel and entityModel.Name or "Ripper"
     
     -- Limpa GUI após fade out
     wait(0.5)
@@ -397,25 +413,10 @@ Spawner.runEntity = function(entityTable)
                         if #entityTable.Config.CustomDialog > 0 then
                             firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
                         end
-                        
-                        -- Unmute entity
-
-                        task.spawn(function()
-                            repeat task.wait() until Plr.PlayerGui.MainUI.DeathPanelDead.Visible
-
-                            warn("unmute entity:", entityModel)
-
-                            for _, v in next, entityModel:GetDescendants() do
-                                if v.ClassName == "Sound" then
-                                    local oldVolume = v.Volume
-                                
-                                    v.Volume = 0
-                                    v:Play()
-                                    TS:Create(v, TweenInfo.new(2), {Volume = oldVolume}):Play()
-                                end
-                            end
-                        end)
                     end)
+                    
+                    -- Parar execução do loop de movimento já que a entidade será destruída
+                    return
                 end
             end
         end
@@ -459,7 +460,7 @@ Spawner.runEntity = function(entityTable)
 
     -- Fall and Destroy
 
-    if not entityModel:GetAttribute("NoAI") then
+    if not entityModel:GetAttribute("NoAI") and entityModel.Parent then
         -- Desconectar movimento regular primeiro
         if entityConnections.movementTick then
             entityConnections.movementTick:Disconnect()
