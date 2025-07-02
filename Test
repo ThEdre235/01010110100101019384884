@@ -36,44 +36,6 @@ function getPlayerRoot()
     return Char:FindFirstChild("HumanoidRootPart") or Char:FindFirstChild("Head")
 end
 
--- Função para parar completamente o movimento da entidade
-function stopEntityMovement(entityModel)
-    local entityConnections = EntityConnections[entityModel]
-    
-    if entityConnections then
-        -- Desconectar todos os nós de movimento
-        if entityConnections.movementNode then
-            entityConnections.movementNode:Disconnect()
-            entityConnections.movementNode = nil
-        end
-        
-        if entityConnections.fallNode then
-            entityConnections.fallNode:Disconnect()
-            entityConnections.fallNode = nil
-        end
-        
-        if entityConnections.movementTick then
-            entityConnections.movementTick:Disconnect()
-            entityConnections.movementTick = nil
-        end
-    end
-    
-    -- Ancorar o modelo completamente
-    if entityModel and entityModel.Parent and entityModel.PrimaryPart then
-        entityModel.PrimaryPart.Anchored = true
-        entityModel:SetAttribute("NoAI", true)
-        
-        -- Ancorar todas as partes do modelo para garantir
-        for _, part in pairs(entityModel:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.Anchored = true
-                part.Velocity = Vector3.new(0, 0, 0)
-                part.AngularVelocity = Vector3.new(0, 0, 0)
-            end
-        end
-    end
-end
-
 function dragEntity(entityModel, pos, speed)
     local entityConnections = EntityConnections[entityModel]
 
@@ -94,7 +56,7 @@ function dragEntity(entityModel, pos, speed)
         end
     end)
 
-    repeat task.wait() until not entityConnections.movementNode or not entityConnections.movementNode.Connected
+    repeat task.wait() until not entityConnections.movementNode.Connected
 end
 
 -- Nova função para movimento de queda
@@ -108,7 +70,7 @@ function fallEntity(entityModel, fallDistance, fallSpeed)
     end
 
     entityConnections.fallNode = RS.Stepped:Connect(function(_, step)
-        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+        if entityModel.Parent then
             local currentPos = entityModel.PrimaryPart.Position
             local diff = targetPos - currentPos
 
@@ -122,7 +84,7 @@ function fallEntity(entityModel, fallDistance, fallSpeed)
         end
     end)
 
-    repeat task.wait() until not entityConnections.fallNode or not entityConnections.fallNode.Connected
+    repeat task.wait() until not entityConnections.fallNode.Connected
 end
 
 function loadSound(soundData)
@@ -149,11 +111,36 @@ function loadSound(soundData)
     return sound
 end
 
+-- FUNÇÃO PARA DESATIVAR PARTÍCULAS E LUZES DO MODELO DA ENTIDADE
+local function disableEntityEffects(entityModel)
+    for _, descendant in pairs(entityModel:GetDescendants()) do
+        -- Desativar partículas
+        if descendant:IsA("ParticleEmitter") then
+            descendant.Enabled = false
+        elseif descendant:IsA("Fire") then
+            descendant.Enabled = false
+        elseif descendant:IsA("Smoke") then
+            descendant.Enabled = false
+        elseif descendant:IsA("Sparkles") then
+            descendant.Enabled = false
+        -- Desativar luzes
+        elseif descendant:IsA("PointLight") then
+            descendant.Enabled = false
+        elseif descendant:IsA("SpotLight") then
+            descendant.Enabled = false
+        elseif descendant:IsA("SurfaceLight") then
+            descendant.Enabled = false
+        -- Desativar outros efeitos visuais
+        elseif descendant:IsA("Beam") then
+            descendant.Enabled = false
+        elseif descendant:IsA("Trail") then
+            descendant.Enabled = false
+        end
+    end
+end
+
 -- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
 local function ripperDeath(entityModel, entityTable)
-    -- PRIMEIRO: PARAR COMPLETAMENTE O MOVIMENTO DA ENTIDADE
-    stopEntityMovement(entityModel)
-    
     --Model Jumpscare
     local r = game:GetObjects("rbxassetid://76305076231751")[1] 
     r.Parent = workspace
@@ -413,14 +400,14 @@ Spawner.runEntity = function(entityTable)
                     task.spawn(entityTable.Debug.OnLookAtEntity)
                 end
 
-                -- Kill player - MODIFICADO PARA ANCORAR A ENTIDADE
+                -- Kill player - SUBSTITUÍDO POR SISTEMA DO RIPPER
 
                 if entityTable.Config.CanKill and not Char:GetAttribute("IsDead") and not Char:GetAttribute("Invincible") and not Char:GetAttribute("Hiding") and (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude <= entityTable.Config.KillRange then
                     task.spawn(function()
                         Char:SetAttribute("IsDead", true)
 
-                        -- PARAR MOVIMENTO DA ENTIDADE IMEDIATAMENTE
-                        stopEntityMovement(entityModel)
+                        -- DESATIVA TODAS AS PARTÍCULAS E LUZES DO MODELO DA ENTIDADE
+                        disableEntityEffects(entityModel)
 
                         -- Mute entity
 
