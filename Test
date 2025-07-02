@@ -142,7 +142,7 @@ end
 -- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
 local function ripperDeath(entityModel, entityTable)
     --Model Jumpscare
-    local r = game:GetObjects("rbxassetid://79225524775496")[1] 
+    local r = game:GetObjects("rbxassetid://76305076231751")[1] 
     r.Parent = workspace
 
     local cameraConnection
@@ -240,7 +240,7 @@ local function ripperDeath(entityModel, entityTable)
     TS:Create(red, GetTimeSpeed, {ImageTransparency = 1}):Play()
     
     -- Define causa da morte
-    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = "Ripper"
+    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Ripper"
     
     -- Limpa GUI após fade out
     wait(0.5)
