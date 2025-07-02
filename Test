@@ -111,21 +111,20 @@ function loadSound(soundData)
     return sound
 end
 
--- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
+-- FUNÇÃO DE MORTE ADAPTADA DO RIPPER - CORRIGIDA
 local function ripperDeath(entityModel, entityTable)
-    -- DESTRUIR O MODELO QUE ESTAVA SE MOVIMENTANDO ANTES DO JUMPSCARE
-    if entityModel and entityModel.Parent then
-        -- Desconectar todas as conexões da entidade
-        local entityConnections = EntityConnections[entityModel]
-        if entityConnections then
-            for _, connection in pairs(entityConnections) do
-                if connection and connection.Connected then
-                    connection:Disconnect()
-                end
+    -- PRIMEIRO: Parar todo movimento da entidade original e removê-la
+    local entityConnections = EntityConnections[entityModel]
+    if entityConnections then
+        for _, connection in pairs(entityConnections) do
+            if connection and connection.Connected then
+                connection:Disconnect()
             end
         end
-        
-        -- Destruir o modelo que estava se movimentando
+    end
+    
+    -- Remover a entidade original da workspace
+    if entityModel and entityModel.Parent then
         entityModel:Destroy()
     end
     
@@ -221,7 +220,7 @@ local function ripperDeath(entityModel, entityTable)
     TS:Create(red, GetTimeSpeed, {ImageTransparency = 1}):Play()
     
     -- Define causa da morte
-    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel and entityModel.Name or "Ripper"
+    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Ripper"
     
     -- Limpa GUI após fade out
     wait(0.5)
@@ -388,7 +387,7 @@ Spawner.runEntity = function(entityTable)
                     task.spawn(entityTable.Debug.OnLookAtEntity)
                 end
 
-                -- Kill player - SUBSTITUÍDO POR SISTEMA DO RIPPER
+                -- Kill player - CORRIGIDO PARA EVITAR DUPLICAÇÃO
 
                 if entityTable.Config.CanKill and not Char:GetAttribute("IsDead") and not Char:GetAttribute("Invincible") and not Char:GetAttribute("Hiding") and (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude <= entityTable.Config.KillRange then
                     task.spawn(function()
@@ -404,7 +403,7 @@ Spawner.runEntity = function(entityTable)
                             end
                         end
 
-                        -- CHAMA A FUNÇÃO DE MORTE ADAPTADA DO RIPPER
+                        -- CHAMA A FUNÇÃO DE MORTE ADAPTADA DO RIPPER (que agora remove a entidade original)
                         ripperDeath(entityModel, entityTable)
                         
                         -- Death handling
@@ -413,10 +412,9 @@ Spawner.runEntity = function(entityTable)
                         if #entityTable.Config.CustomDialog > 0 then
                             firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
                         end
+                        
+                        -- REMOVIDO: Código de unmute entity porque a entidade original já foi destruída
                     end)
-                    
-                    -- Parar execução do loop de movimento já que a entidade será destruída
-                    return
                 end
             end
         end
@@ -458,9 +456,9 @@ Spawner.runEntity = function(entityTable)
         end
     end
 
-    -- Fall and Destroy
+    -- Fall and Destroy - MODIFICADO PARA VERIFICAR SE A ENTIDADE AINDA EXISTE
 
-    if not entityModel:GetAttribute("NoAI") and entityModel.Parent then
+    if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
         -- Desconectar movimento regular primeiro
         if entityConnections.movementTick then
             entityConnections.movementTick:Disconnect()
@@ -470,17 +468,19 @@ Spawner.runEntity = function(entityTable)
         fallEntity(entityModel, 20, 50) -- 20 studs de queda com velocidade 50
         
         -- Aguardar até que o movimento de queda termine
-        repeat task.wait() until not EntityConnections[entityModel].fallNode or not EntityConnections[entityModel].fallNode.Connected
+        repeat task.wait() until not EntityConnections[entityModel] or not EntityConnections[entityModel].fallNode or not EntityConnections[entityModel].fallNode.Connected
         
-        -- Agora destruir a entidade
-        for _, v in next, entityConnections do
-            if v and v.Connected then
-                v:Disconnect()
+        -- Agora destruir a entidade (se ainda existir)
+        if entityModel.Parent then
+            for _, v in next, entityConnections do
+                if v and v.Connected then
+                    v:Disconnect()
+                end
             end
+            
+            entityModel:Destroy()
+            task.spawn(entityTable.Debug.OnEntityDespawned)
         end
-        
-        entityModel:Destroy()
-        task.spawn(entityTable.Debug.OnEntityDespawned)
     end
 end
 
