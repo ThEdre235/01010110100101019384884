@@ -43,8 +43,13 @@ end
 function dragEntity(entityModel, pos, speed)
     local entityConnections = EntityConnections[entityModel]
 
-    if entityConnections.movementNode then
+    if entityConnections and entityConnections.movementNode then
         entityConnections.movementNode:Disconnect()
+    end
+
+    if not entityConnections then
+        EntityConnections[entityModel] = {}
+        entityConnections = EntityConnections[entityModel]
     end
 
     entityConnections.movementNode = RS.Stepped:Connect(function(_, step)
@@ -117,6 +122,12 @@ end
 
 -- FUNÇÃO DE MORTE ADAPTADA DO RIPPER
 local function ripperDeath(entityModel, entityTable)
+    -- Previne múltiplas mortes
+    if Char:GetAttribute("DeathInProgress") then
+        return
+    end
+    Char:SetAttribute("DeathInProgress", true)
+    
     --Model Jumpscare
     local r = game:GetObjects("rbxassetid://138939373612885")[1] 
     r.Parent = workspace
@@ -139,9 +150,14 @@ local function ripperDeath(entityModel, entityTable)
     end)
 
     --Freeze movement
-    spawn(function()
-        while wait() do
-            Plr.Character.Humanoid.WalkSpeed = 0
+    local freezeConnection
+    freezeConnection = RS.Heartbeat:Connect(function()
+        if Char and Char:FindFirstChild("Humanoid") then
+            Char.Humanoid.WalkSpeed = 0
+            Char.Humanoid.JumpPower = 0
+            if Char.Humanoid.Sit then
+                Char.Humanoid.Sit = false
+            end
         end
     end)
 
@@ -201,10 +217,37 @@ local function ripperDeath(entityModel, entityTable)
     TS:Create(red, TweenInfo.new(0.5), {ImageTransparency = 0}):Play()
 
     wait(2)
-    -- MATA O PLAYER AQUI
-    Hum:TakeDamage(100)
+    
+    -- MATA O PLAYER AQUI - MÚLTIPLOS MÉTODOS PARA GARANTIR A MORTE
+    spawn(function()
+        if Char and Char:FindFirstChild("Humanoid") then
+            -- Método 1: TakeDamage
+            Char.Humanoid:TakeDamage(math.huge)
+            
+            -- Método 2: ChangeState para Dead
+            Char.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+            
+            -- Método 3: Definir Health como 0
+            Char.Humanoid.Health = 0
+            
+            -- Método 4: Remover HumanoidRootPart (último recurso)
+            task.wait(0.1)
+            if Char.Humanoid.Health > 0 then
+                local hrp = Char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp:Destroy()
+                end
+            end
+        end
+    end)
+    
+    -- Para o freeze movement após a morte
+    if freezeConnection then
+        freezeConnection:Disconnect()
+    end
     
     -- RESTAURA A CÂMERA AO NORMAL
+    task.wait(0.5)
     if cameraConnection then
         cameraConnection:Disconnect()
     end
@@ -216,7 +259,9 @@ local function ripperDeath(entityModel, entityTable)
     TS:Create(red, GetTimeSpeed, {ImageTransparency = 1}):Play()
     
     -- Define causa da morte
-    ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Corrode"
+    if ReSt:FindFirstChild("GameStats") and ReSt.GameStats:FindFirstChild("Player_"..Plr.Name) then
+        ReSt.GameStats["Player_"..Plr.Name].Total.DeathCause.Value = entityModel.Name or "Corrode"
+    end
     
     -- Limpa GUI após fade out
     wait(0.5)
@@ -273,6 +318,10 @@ Spawner.createEntity = function(config)
 end
 
 Spawner.runEntity = function(entityTable)
+    -- Atualiza referências do personagem
+    Char = Plr.Character or Plr.CharacterAdded:Wait()
+    Hum = Char:WaitForChild("Humanoid")
+    
     -- Nodes
 
     local nodes = {}
@@ -338,10 +387,17 @@ Spawner.runEntity = function(entityTable)
 
     entityConnections.movementTick = RS.Stepped:Connect(function()
         if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+            -- Atualiza referências do personagem a cada frame
+            local currentChar = Plr.Character
+            if not currentChar then return end
+            
+            local playerRoot = getPlayerRoot()
+            if not playerRoot then return end
+            
             local entityPos = entityModel.PrimaryPart.Position
-            local rootPos = getPlayerRoot().Position
-            local floorRay = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, Vector3.new(0, -10, 0)), {entityModel, Char})
-            local playerInSight = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, rootPos - entityPos), {entityModel, Char}) == nil
+            local rootPos = playerRoot.Position
+            local floorRay = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, Vector3.new(0, -10, 0)), {entityModel, currentChar})
+            local playerInSight = FindPartOnRayWithIgnoreList(workspace, Ray.new(entityPos, rootPos - entityPos), {entityModel, currentChar}) == nil
             
             -- Entered room
 
@@ -365,7 +421,7 @@ Spawner.runEntity = function(entityTable)
             -- Camera shaking
             
             local shakeConfig = entityTable.Config.CamShake
-            local shakeMag = (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude
+            local shakeMag = (playerRoot.Position - entityModel.PrimaryPart.Position).Magnitude
 
             if shakeConfig[1] and shakeMag <= shakeConfig[3] then
                 local shakeRep = {}
@@ -389,14 +445,32 @@ Spawner.runEntity = function(entityTable)
                     task.spawn(entityTable.Debug.OnLookAtEntity)
                 end
 
-                -- Kill player - SUBSTITUÍDO POR SISTEMA DO RIPPER
+                -- Kill player - VERSÃO CORRIGIDA
 
-                if entityTable.Config.CanKill and not Char:GetAttribute("IsDead") and not Char:GetAttribute("Invincible") and not Char:GetAttribute("Hiding") and (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude <= entityTable.Config.KillRange then
+                local distance = (playerRoot.Position - entityModel.PrimaryPart.Position).Magnitude
+                local canKill = entityTable.Config.CanKill 
+                local notDead = not currentChar:GetAttribute("IsDead") and not currentChar:GetAttribute("DeathInProgress")
+                local notInvincible = not currentChar:GetAttribute("Invincible")
+                local notHiding = not currentChar:GetAttribute("Hiding")
+                local inKillRange = distance <= (entityTable.Config.KillRange or 15)
+                
+                -- Debug print para verificar condições
+                if canKill and notDead and notInvincible and notHiding then
+                    print("Distância para morte:", distance, "Range necessário:", entityTable.Config.KillRange or 15)
+                end
+
+                if canKill and notDead and notInvincible and notHiding and inKillRange then
+                    print("TENTANDO MATAR JOGADOR!")
                     task.spawn(function()
-                        if workspace.Ambience_FigureEnd.Playing or workspace.Ambience_FigureStart.Playing or workspace.Ambience_Figure.Playing or workspace.Ambience_Seek.Playing or workspace:FindFirstChild("Blink") or workspace:FindFirstChild("SeekMoving") then
+                        -- Verifica se não há outras entidades ativas que possam interferir
+                        if workspace.Ambience_FigureEnd.Playing or workspace.Ambience_FigureStart.Playing or 
+                           workspace.Ambience_Figure.Playing or workspace.Ambience_Seek.Playing or 
+                           workspace:FindFirstChild("Blink") or workspace:FindFirstChild("SeekMoving") then
                             return
                         end
-                        Char:SetAttribute("IsDead", true)
+                        
+                        print("MATANDO JOGADOR!")
+                        currentChar:SetAttribute("IsDead", true)
 
                         -- DESATIVA TODAS AS PARTÍCULAS E LUZES DO MODELO DA ENTIDADE
                         disableEntityEffects(entityModel)
@@ -484,7 +558,9 @@ Spawner.runEntity = function(entityTable)
 
     if not entityModel:GetAttribute("NoAI") then
         for _, v in next, entityConnections do
-            v:Disconnect()
+            if v.Connected then
+                v:Disconnect()
+            end
         end
         
         task.spawn(entityTable.Debug.OnEntityDespawned)
