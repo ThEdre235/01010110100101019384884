@@ -146,7 +146,7 @@ local function ripperDeath(entityModel, entityTable)
     end)
 
     --Jumpscare
-    local bruh = workspace:FindFirstChild("Corrode")
+    local bruh = workspace:FindFirstChild("weuygdasu482i3")
     if bruh and bruh.PrimaryPart then
         r:SetPrimaryPartCFrame(bruh.PrimaryPart.CFrame * CFrame.new(0, 1, 0))
     end
