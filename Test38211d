@@ -107,7 +107,7 @@ local function disableEntityEffects(entityModel)
         elseif descendant:IsA("SurfaceLight") then
             descendant.Enabled = false
         -- Desativar outros efeitos visuais
-        elseif descendant:IsA("Beam") then
+        elsevier descendant:IsA("Beam") then
             descendant.Enabled = false
         elseif descendant:IsA("Trail") then
             descendant.Enabled = false
@@ -120,6 +120,17 @@ local function ripperDeath(entityModel, entityTable)
     --Model Jumpscare
     local r = game:GetObjects("rbxassetid://138939373612885")[1] 
     r.Parent = workspace
+
+    -- POSICIONA O MODELO DO JUMPSCARE NA MESMA POSIÇÃO DA ENTIDADE
+    if entityModel and entityModel.PrimaryPart then
+        r:SetPrimaryPartCFrame(entityModel.PrimaryPart.CFrame)
+    else
+        -- Fallback para a posição original se não conseguir pegar a posição da entidade
+        local bruh = workspace:FindFirstChild("weuygdasu482i3")
+        if bruh and bruh.PrimaryPart then
+            r:SetPrimaryPartCFrame(bruh.PrimaryPart.CFrame * CFrame.new(0, 1, 0))
+        end
+    end
 
     local cameraConnection
     spawn(function()
@@ -145,12 +156,7 @@ local function ripperDeath(entityModel, entityTable)
         end
     end)
 
-    --Jumpscare
-    local bruh = workspace:FindFirstChild("weuygdasu482i3")
-    if bruh and bruh.PrimaryPart then
-        r:SetPrimaryPartCFrame(bruh.PrimaryPart.CFrame * CFrame.new(0, 1, 0))
-    end
-    
+    --Jumpscare particles
     for i,v in pairs(r:GetDescendants()) do
         if v:IsA("ParticleEmitter") then
             v.Rate = 9999999
@@ -530,7 +536,7 @@ Spawner.runJumpscare = function(config)
     Face.AnchorPoint = Vector2.new(0.5, 0.5)
     Face.BackgroundTransparency = 1
     Face.Position = UDim2.new(0.5, 0, 0.5, 0)
-    Face.ResampleMode = Enum.ResamplerMode.Pixelated
+    Face.ResampleMode = Enum.ResamplerCode.Pixelated
     Face.Size = UDim2.new(0, 150, 0, 150)
     Face.Image = image1
 
