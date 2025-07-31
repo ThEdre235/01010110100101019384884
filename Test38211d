@@ -351,6 +351,7 @@ Spawner.runEntity = function(entityTable)
             v:Disconnect()
         end
         
+        -- Executar OnEntityDespawned quando a entidade ficar desancorada
         task.spawn(entityTable.Debug.OnEntityDespawned)
         entityModel.PrimaryPart.Anchored = false
         entityModel.PrimaryPart.CanCollide = false
