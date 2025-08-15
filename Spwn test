@@ -137,8 +137,9 @@ Spawner.createEntity = function(config)
 end
 
 Spawner.runEntity = function(entityTable)
-    -- Dynamic nodes function
-    local function updateNodes()
+    -- Nodes function to get all current nodes
+    
+    local function getAllNodes()
         local nodes = {}
 
         for _, room in next, workspace.CurrentRooms:GetChildren() do
@@ -147,19 +148,11 @@ Spawner.runEntity = function(entityTable)
             if pathfindNodes then
                 pathfindNodes = pathfindNodes:GetChildren()
             else
-                -- Try to find RoomExit or RoomEntrance
-                local roomExit = room:FindFirstChild("RoomExit")
-                local roomEntrance = room:FindFirstChild("RoomEntrance")
-                local targetPart = roomExit or roomEntrance
-                
-                if targetPart then
-                    local fakeNode = Instance.new("Part")
-                    fakeNode.Name = "1"
-                    fakeNode.CFrame = targetPart.CFrame - Vector3.new(0, targetPart.Size.Y / 2, 0)
-                    pathfindNodes = {fakeNode}
-                else
-                    pathfindNodes = {}
-                end
+                local fakeNode = Instance.new("Part")
+                fakeNode.Name = "1"
+                fakeNode.CFrame = room:WaitForChild("RoomExit").CFrame - Vector3.new(0, room.RoomExit.Size.Y / 2, 0)
+
+                pathfindNodes = {fakeNode}
             end
 
             table.sort(pathfindNodes, function(a, b)
@@ -173,47 +166,8 @@ Spawner.runEntity = function(entityTable)
         
         return nodes
     end
-
-    -- Initial nodes
-    local nodes = updateNodes()
-
-    -- Room/Node monitoring
-    local roomUpdateConnection
-    roomUpdateConnection = workspace.CurrentRooms.ChildAdded:Connect(function(newRoom)
-        -- Wait a bit for the room to fully load
-        task.wait(0.5)
-        
-        -- Update nodes when new room is added
-        if not entityModel:GetAttribute("NoAI") then
-            nodes = updateNodes()
-            
-            -- If entity finished its current cycle, restart movement with new nodes
-            if not entityConnections.movementNode or not entityConnections.movementNode.Connected then
-                task.spawn(function()
-                    -- Continue movement with updated nodes
-                    if entityTable.Config.BackwardsMovement then
-                        local inverseNodes = {}
-                        for nodeIdx = #nodes, 1, -1 do
-                            inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
-                        end
-                        nodes = inverseNodes
-                    end
-                    
-                    -- Move through new nodes
-                    for nodeIdx = 1, #nodes, 1 do
-                        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
-                            dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
-                        else
-                            break
-                        end
-                    end
-                end)
-            end
-        end
-    end)
     
-    -- Add room update connection to entity connections for cleanup
-    entityConnections.roomUpdate = roomUpdateConnection
+    local nodes = getAllNodes()
 
     -- Spawn
 
@@ -246,11 +200,83 @@ Spawner.runEntity = function(entityTable)
         ModuleScripts.ModuleEvents.flicker(workspace.CurrentRooms[ReSt.GameData.LatestRoom.Value], entityTable.Config.FlickerLights[2])
     end
 
-    -- Movement
+    -- Movement with dynamic node detection
 
     task.wait(entityTable.Config.DelayTime)
 
     local enteredRooms = {}
+    local currentNodeIndex = 1
+    local movingForward = true
+    local currentCycle = 1
+    local cyclesConfig = entityTable.Config.Cycles
+    local maxCycles = math.max(math.random(cyclesConfig.Min, cyclesConfig.Max), 1)
+
+    -- Set initial movement direction
+    if entityTable.Config.BackwardsMovement then
+        currentNodeIndex = #nodes
+        movingForward = false
+    end
+
+    local function updateMovement()
+        nodes = getAllNodes() -- Update nodes dynamically
+        
+        if entityTable.Config.BackwardsMovement then
+            local inverseNodes = {}
+            for nodeIdx = #nodes, 1, -1 do
+                inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
+            end
+            nodes = inverseNodes
+        end
+        
+        -- Ensure current node index is valid
+        if currentNodeIndex > #nodes then
+            currentNodeIndex = #nodes
+        elseif currentNodeIndex < 1 then
+            currentNodeIndex = 1
+        end
+        
+        if #nodes > 0 then
+            local targetNode = nodes[currentNodeIndex]
+            if targetNode and targetNode.Parent then
+                dragEntity(entityModel, targetNode.Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+                
+                -- Move to next node
+                if movingForward then
+                    currentNodeIndex = currentNodeIndex + 1
+                    if currentNodeIndex > #nodes then
+                        if cyclesConfig.Max > 1 then
+                            movingForward = false
+                            currentNodeIndex = #nodes - 1
+                        else
+                            currentCycle = currentCycle + 1
+                            currentNodeIndex = 1
+                        end
+                    end
+                else
+                    currentNodeIndex = currentNodeIndex - 1
+                    if currentNodeIndex < 1 then
+                        movingForward = true
+                        currentNodeIndex = 2
+                        currentCycle = currentCycle + 1
+                        
+                        if currentCycle <= maxCycles then
+                            task.spawn(entityTable.Debug.OnEntityFinishedRebound)
+                            if currentCycle < maxCycles then
+                                task.wait(cyclesConfig.WaitTime)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Dynamic movement loop
+    entityConnections.dynamicMovement = task.spawn(function()
+        while entityModel.Parent and not entityModel:GetAttribute("NoAI") and currentCycle <= maxCycles do
+            updateMovement()
+        end
+    end)
 
     entityConnections.movementTick = RS.Stepped:Connect(function()
         if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
@@ -361,51 +387,6 @@ Spawner.runEntity = function(entityTable)
     end)
 
     task.spawn(entityTable.Debug.OnEntityStartMoving)
-
-    -- Cycles with dynamic node updating
-
-    local cyclesConfig = entityTable.Config.Cycles
-
-    for cycle = 1, math.max(math.random(cyclesConfig.Min, cyclesConfig.Max), 1) do
-        -- Update nodes at the start of each cycle
-        nodes = updateNodes()
-        
-        if entityTable.Config.BackwardsMovement then
-            local inverseNodes = {}
-
-            for nodeIdx = #nodes, 1, -1 do
-                inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
-            end
-
-            nodes = inverseNodes
-        end
-        
-        for nodeIdx = 1, #nodes, 1 do
-            if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
-                dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
-            else
-                break
-            end
-        end
-
-        if cyclesConfig.Max > 1 then
-            for nodeIdx = #nodes, 1, -1 do
-                if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
-                    dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
-                else
-                    break
-                end
-            end
-        end
-
-        -- Rebound finished
-
-        task.spawn(entityTable.Debug.OnEntityFinishedRebound)
-        
-        if cycle < cyclesConfig.Max then
-            task.wait(cyclesConfig.WaitTime)
-        end
-    end
 
     -- Destroy
 
