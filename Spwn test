@@ -137,31 +137,83 @@ Spawner.createEntity = function(config)
 end
 
 Spawner.runEntity = function(entityTable)
-    -- Nodes
+    -- Dynamic nodes function
+    local function updateNodes()
+        local nodes = {}
 
-    local nodes = {}
+        for _, room in next, workspace.CurrentRooms:GetChildren() do
+            local pathfindNodes = room:FindFirstChild("PathfindNodes")
+            
+            if pathfindNodes then
+                pathfindNodes = pathfindNodes:GetChildren()
+            else
+                -- Try to find RoomExit or RoomEntrance
+                local roomExit = room:FindFirstChild("RoomExit")
+                local roomEntrance = room:FindFirstChild("RoomEntrance")
+                local targetPart = roomExit or roomEntrance
+                
+                if targetPart then
+                    local fakeNode = Instance.new("Part")
+                    fakeNode.Name = "1"
+                    fakeNode.CFrame = targetPart.CFrame - Vector3.new(0, targetPart.Size.Y / 2, 0)
+                    pathfindNodes = {fakeNode}
+                else
+                    pathfindNodes = {}
+                end
+            end
 
-    for _, room in next, workspace.CurrentRooms:GetChildren() do
-        local pathfindNodes = room:FindFirstChild("PathfindNodes")
+            table.sort(pathfindNodes, function(a, b)
+                return tonumber(a.Name) < tonumber(b.Name)
+            end)
+
+            for _, node in next, pathfindNodes do
+                nodes[#nodes + 1] = node
+            end
+        end
         
-        if pathfindNodes then
-            pathfindNodes = pathfindNodes:GetChildren()
-        else
-            local fakeNode = Instance.new("Part")
-            fakeNode.Name = "1"
-            fakeNode.CFrame = room:WaitForChild("RoomExit").CFrame - Vector3.new(0, room.RoomExit.Size.Y / 2, 0)
-
-            pathfindNodes = {fakeNode}
-        end
-
-        table.sort(pathfindNodes, function(a, b)
-            return tonumber(a.Name) < tonumber(b.Name)
-        end)
-
-        for _, node in next, pathfindNodes do
-            nodes[#nodes + 1] = node
-        end
+        return nodes
     end
+
+    -- Initial nodes
+    local nodes = updateNodes()
+
+    -- Room/Node monitoring
+    local roomUpdateConnection
+    roomUpdateConnection = workspace.CurrentRooms.ChildAdded:Connect(function(newRoom)
+        -- Wait a bit for the room to fully load
+        task.wait(0.5)
+        
+        -- Update nodes when new room is added
+        if not entityModel:GetAttribute("NoAI") then
+            nodes = updateNodes()
+            
+            -- If entity finished its current cycle, restart movement with new nodes
+            if not entityConnections.movementNode or not entityConnections.movementNode.Connected then
+                task.spawn(function()
+                    -- Continue movement with updated nodes
+                    if entityTable.Config.BackwardsMovement then
+                        local inverseNodes = {}
+                        for nodeIdx = #nodes, 1, -1 do
+                            inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
+                        end
+                        nodes = inverseNodes
+                    end
+                    
+                    -- Move through new nodes
+                    for nodeIdx = 1, #nodes, 1 do
+                        if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+                            dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+                        else
+                            break
+                        end
+                    end
+                end)
+            end
+        end
+    end)
+    
+    -- Add room update connection to entity connections for cleanup
+    entityConnections.roomUpdate = roomUpdateConnection
 
     -- Spawn
 
@@ -310,28 +362,39 @@ Spawner.runEntity = function(entityTable)
 
     task.spawn(entityTable.Debug.OnEntityStartMoving)
 
-    -- Cycles
+    -- Cycles with dynamic node updating
 
     local cyclesConfig = entityTable.Config.Cycles
 
-    if entityTable.Config.BackwardsMovement then
-        local inverseNodes = {}
-
-        for nodeIdx = #nodes, 1, -1 do
-            inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
-        end
-
-        nodes = inverseNodes
-    end
-
     for cycle = 1, math.max(math.random(cyclesConfig.Min, cyclesConfig.Max), 1) do
+        -- Update nodes at the start of each cycle
+        nodes = updateNodes()
+        
+        if entityTable.Config.BackwardsMovement then
+            local inverseNodes = {}
+
+            for nodeIdx = #nodes, 1, -1 do
+                inverseNodes[#inverseNodes + 1] = nodes[nodeIdx]
+            end
+
+            nodes = inverseNodes
+        end
+        
         for nodeIdx = 1, #nodes, 1 do
-            dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+            if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+                dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+            else
+                break
+            end
         end
 
         if cyclesConfig.Max > 1 then
             for nodeIdx = #nodes, 1, -1 do
-                dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+                if entityModel.Parent and not entityModel:GetAttribute("NoAI") then
+                    dragEntity(entityModel, nodes[nodeIdx].Position + Vector3.new(0, 3.5 + entityTable.Config.HeightOffset, 0), entityTable.Config.Speed)
+                else
+                    break
+                end
             end
         end
 
