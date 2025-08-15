@@ -22,112 +22,10 @@ local SelfModules = {
     DefaultConfig = loadstring(game:HttpGet("https://raw.githubusercontent.com/DripCapybara/Test/refs/heads/main/Doors/Backup/DefaultConfig.lua"))(),
     Functions = loadstring(game:HttpGet("https://raw.githubusercontent.com/RegularVynixu/Utilities/main/Functions.lua"))(),
 }
-
--- Função segura para carregar módulos
-local function safeRequire(path)
-    local success, result = pcall(function()
-        return require(path)
-    end)
-    if success then
-        return result
-    else
-        warn("Falha ao carregar módulo:", path, result)
-        return nil
-    end
-end
-
--- Tentativa de carregamento dos módulos com verificações
-local ModuleScripts = {}
-
--- Verificar se ClientModules existe
-local clientModulesPath = ReSt:FindFirstChild("ClientModules")
-if clientModulesPath then
-    local moduleEvents = clientModulesPath:FindFirstChild("Module_Events")
-    if moduleEvents then
-        ModuleScripts.ModuleEvents = safeRequire(moduleEvents)
-    end
-end
-
--- Verificar se MainUI existe
-local mainUIPath = Plr.PlayerGui:FindFirstChild("MainUI")
-if mainUIPath then
-    local initiator = mainUIPath:FindFirstChild("Initiator")
-    if initiator then
-        local mainGame = initiator:FindFirstChild("Main_Game")
-        if mainGame then
-            ModuleScripts.MainGame = safeRequire(mainGame)
-        end
-    end
-end
-
--- Funções alternativas caso os módulos não existam
-local function safeFunctionCall(moduleTable, functionName, ...)
-    if moduleTable and moduleTable[functionName] then
-        return moduleTable[functionName](...)
-    else
-        warn("Função não disponível:", functionName)
-    end
-end
-
-local function alternativeFlicker(room, duration)
-    -- Implementação alternativa para piscar luzes
-    if not room then return end
-    
-    local lights = {}
-    for _, obj in pairs(room:GetDescendants()) do
-        if obj:IsA("Light") or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-            table.insert(lights, obj)
-        end
-    end
-    
-    task.spawn(function()
-        for i = 1, duration or 5 do
-            for _, light in pairs(lights) do
-                if light.Parent then
-                    light.Enabled = not light.Enabled
-                end
-            end
-            task.wait(0.1)
-        end
-        -- Restaurar luzes
-        for _, light in pairs(lights) do
-            if light.Parent then
-                light.Enabled = true
-            end
-        end
-    end)
-end
-
-local function alternativeShatter(room)
-    -- Implementação alternativa para quebrar luzes
-    if not room then return end
-    
-    for _, obj in pairs(room:GetDescendants()) do
-        if obj:IsA("Light") or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-            obj.Enabled = false
-        end
-    end
-end
-
-local function alternativeCamShake(intensity, duration)
-    -- Implementação alternativa para shake da câmera
-    task.spawn(function()
-        local originalCFrame = Camera.CFrame
-        local startTime = tick()
-        
-        while tick() - startTime < (duration or 0.5) do
-            local shakeX = math.random(-intensity, intensity) / 100
-            local shakeY = math.random(-intensity, intensity) / 100
-            local shakeZ = math.random(-intensity, intensity) / 100
-            
-            Camera.CFrame = originalCFrame * CFrame.new(shakeX, shakeY, shakeZ)
-            task.wait()
-        end
-        
-        Camera.CFrame = originalCFrame
-    end)
-end
-
+local ModuleScripts = {
+    ModuleEvents = require(ReSt.ModulesClient.Module_Events),
+    MainGame = require(Plr.PlayerGui.MainUI.Initiator.Main_Game),
+}
 local EntityConnections = {}
 
 local Spawner = {}
@@ -290,14 +188,10 @@ Spawner.runEntity = function(entityTable)
         end
     end
 
-    -- Flickering (com função alternativa)
+    -- Flickering
 
     if entityTable.Config.FlickerLights[1] then
-        if ModuleScripts.ModuleEvents then
-            safeFunctionCall(ModuleScripts.ModuleEvents, "flicker", workspace.CurrentRooms[ReSt.GameData.LatestRoom.Value], entityTable.Config.FlickerLights[2])
-        else
-            alternativeFlicker(workspace.CurrentRooms[ReSt.GameData.LatestRoom.Value], entityTable.Config.FlickerLights[2])
-        end
+        ModuleScripts.ModuleEvents.flicker(workspace.CurrentRooms[ReSt.GameData.LatestRoom.Value], entityTable.Config.FlickerLights[2])
     end
 
     -- Movement
@@ -321,14 +215,10 @@ Spawner.runEntity = function(entityTable)
                         enteredRooms[#enteredRooms + 1] = room
                         task.spawn(entityTable.Debug.OnEntityEnteredRoom, room)
 
-                        -- Break lights (com função alternativa)
+                        -- Break lights
                         
                         if entityTable.Config.BreakLights then
-                            if ModuleScripts.ModuleEvents then
-                                safeFunctionCall(ModuleScripts.ModuleEvents, "shatter", room)
-                            else
-                                alternativeShatter(room)
-                            end
+                            ModuleScripts.ModuleEvents.shatter(room)
                         end
 
                         break
@@ -336,26 +226,20 @@ Spawner.runEntity = function(entityTable)
                 end
             end
 
-            -- Camera shaking (com função alternativa)
+            -- Camera shaking
             
             local shakeConfig = entityTable.Config.CamShake
             local shakeMag = (getPlayerRoot().Position - entityModel.PrimaryPart.Position).Magnitude
 
             if shakeConfig[1] and shakeMag <= shakeConfig[3] then
-                if ModuleScripts.MainGame and ModuleScripts.MainGame.camShaker then
-                    local shakeRep = {}
+                local shakeRep = {}
 
-                    for i, v in next, shakeConfig[2] do
-                        shakeRep[i] = v
-                    end
-                    shakeRep[1] = shakeConfig[2][1] / shakeConfig[3] * (shakeConfig[3] - shakeMag)
-
-                    safeFunctionCall(ModuleScripts.MainGame.camShaker, "ShakeOnce", table.unpack(shakeRep))
-                else
-                    -- Usar função alternativa
-                    local intensity = shakeConfig[2][1] / shakeConfig[3] * (shakeConfig[3] - shakeMag)
-                    alternativeCamShake(intensity, 0.5)
+                for i, v in next, shakeConfig[2] do
+                    shakeRep[i] = v
                 end
+                shakeRep[1] = shakeConfig[2][1] / shakeConfig[3] * (shakeConfig[3] - shakeMag)
+
+                ModuleScripts.MainGame.camShaker.ShakeOnce(ModuleScripts.MainGame.camShaker, table.unpack(shakeRep))
             end
 
             -- Player in sight
@@ -395,19 +279,10 @@ Spawner.runEntity = function(entityTable)
                         
                         task.spawn(entityTable.Debug.OnDeath)
                         Hum.Health = 0
-                        
-                        -- Verificação segura do GameStats
-                        if ReSt:FindFirstChild("GameStats") then
-                            local playerStats = ReSt.GameStats:FindFirstChild("Player_".. Plr.Name)
-                            if playerStats and playerStats:FindFirstChild("Total") and playerStats.Total:FindFirstChild("DeathCause") then
-                                playerStats.Total.DeathCause.Value = entityModel.Name
-                            end
-                        end
+                        ReSt.GameStats["Player_".. Plr.Name].Total.DeathCause.Value = entityModel.Name
                         
                         if #entityTable.Config.CustomDialog > 0 then
-                            if ReSt:FindFirstChild("Bricks") and ReSt.Bricks:FindFirstChild("DeathHint") then
-                                firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
-                            end
+                            firesignal(ReSt.Bricks.DeathHint.OnClientEvent, entityTable.Config.CustomDialog)
                         end
                         
                         -- Unmute entity
